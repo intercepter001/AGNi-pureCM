@@ -1,0 +1,27 @@
+#!/bin/sh
+export KERNELDIR=`readlink -f .`
+export KBUILD_BUILD_USER=AGNi
+export KBUILD_BUILD_HOST=PSN-pureCM-NON-OC
+CROSS_COMPILE=/Working_Directory/android_prebuilt/linux-x86/toolchain/arm-eabi-4.4.3/bin/arm-eabi-
+
+if [ ! -f $KERNELDIR/.config ];
+then
+  make defconfig psn_i9300_new_defconfig
+fi
+
+. $KERNELDIR/.config
+
+export ARCH=arm
+
+cd $KERNELDIR/
+nice -n 10 make -j4 || exit 1
+
+mkdir -p $KERNELDIR/BUILT_I9300/lib/modules
+
+rm $KERNELDIR/BUILT_I9300/lib/modules/*
+rm $KERNELDIR/BUILT_I9300/zImage
+
+find -name '*.ko' -exec cp -av {} $KERNELDIR/BUILT_I9300/lib/modules/ \;
+/Working_Directory/android_prebuilt/linux-x86/toolchain/arm-eabi-4.4.3/bin/arm-eabi-strip --strip-unneeded $KERNELDIR/BUILT_I9300/lib/modules/*
+cp $KERNELDIR/arch/arm/boot/zImage $KERNELDIR/BUILT_I9300/
+
