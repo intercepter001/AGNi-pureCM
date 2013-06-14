@@ -40,25 +40,15 @@
 
 #if defined(CONFIG_ZRAM_LZO)
 #include <linux/lzo.h>
-#ifdef MULTIPLE_COMPRESSORS
-static const struct zram_compressor lzo_compressor = {
-	.name = "LZO",
-	.workmem_bytes = LZO1X_MEM_COMPRESS,
-	.compress = &lzo1x_1_compress,
-	.decompress = &lzo1x_decompress_safe
-};
-#else /* !MULTIPLE_COMPRESSORS */
 #define WMSIZE		LZO1X_MEM_COMPRESS
 #define COMPRESS(s, sl, d, dl, wm)	\
 	lzo1x_1_compress(s, sl, d, dl, wm)
 #define DECOMPRESS(s, sl, d, dl)	\
 	lzo1x_decompress_safe(s, sl, d, dl)
-#endif /* !MULTIPLE_COMPRESSORS */
-#endif /* defined(CONFIG_ZRAM_LZO) */
-
-#if defined(CONFIG_ZRAM_SNAPPY)
+#elif defined(CONFIG_ZRAM_SNAPPY)
 #include "../snappy/csnappy.h" /* if built in drivers/staging */
 #define WMSIZE_ORDER	((PAGE_SHIFT > 14) ? (15) : (PAGE_SHIFT+1))
+#define WMSIZE		(1 << WMSIZE_ORDER)
 static int
 snappy_compress_(
 	const unsigned char *src,
@@ -84,38 +74,13 @@ snappy_decompress_(
 	*dst_len = (size_t)dst_len_;
 	return ret;
 }
-#ifdef MULTIPLE_COMPRESSORS
-static const struct zram_compressor snappy_compressor = {
-	.name = "SNAPPY",
-	.workmem_bytes = (1 << WMSIZE_ORDER),
-	.compress = &snappy_compress_,
-	.decompress = &snappy_decompress_
-};
-#else /* !MULTIPLE_COMPRESSORS */
-#define WMSIZE		(1 << WMSIZE_ORDER)
 #define COMPRESS(s, sl, d, dl, wm)	\
-snappy_compress_(s, sl, d, dl, wm)
+	snappy_compress_(s, sl, d, dl, wm)
 #define DECOMPRESS(s, sl, d, dl)	\
 	snappy_decompress_(s, sl, d, dl)
-#endif /* !MULTIPLE_COMPRESSORS */
-#endif /* defined(CONFIG_ZRAM_SNAPPY) */
-
-#ifdef MULTIPLE_COMPRESSORS
-const struct zram_compressor * const zram_compressors[] = {
-#if defined(CONFIG_ZRAM_LZO)
-	&lzo_compressor,
+#else
+#error either CONFIG_ZRAM_LZO or CONFIG_ZRAM_SNAPPY must be defined
 #endif
-#if defined(CONFIG_ZRAM_SNAPPY)
-	&snappy_compressor,
-#endif
-	NULL
-};
-#define WMSIZE		(zram->compressor->workmem_bytes)
-#define COMPRESS(s, sl, d, dl, wm)	\
-	(zram->compressor->compress(s, sl, d, dl, wm))
-#define DECOMPRESS(s, sl, d, dl)	\
-	(zram->compressor->decompress(s, sl, d, dl))
-#endif /* MULTIPLE_COMPRESSORS */
 
 /* Globals */
 static int zram_major;
@@ -387,6 +352,7 @@ static void zram_write(struct zram *zram, struct bio *bio)
 	index = bio->bi_sector >> SECTORS_PER_PAGE_SHIFT;
 
 	bio_for_each_segment(bvec, bio, i) {
+		int ret;
 		u32 offset;
 		size_t clen;
 		struct zobj_header *zheader;
@@ -417,7 +383,7 @@ static void zram_write(struct zram *zram, struct bio *bio)
 		}
 
 		COMPRESS(user_mem, PAGE_SIZE, src, &clen,
-			 zram->compress_workmem);
+				zram->compress_workmem);
 
 		kunmap_atomic(user_mem, KM_USER0);
 
@@ -720,11 +686,6 @@ static int create_device(struct zram *zram, int device_id)
 
 	/* Actual capacity set using syfs (/sys/block/zram<id>/disksize */
 	set_capacity(zram->disk, 0);
-
-/* Can be changed using sysfs (/sys/block/zram<id>/compressor) */
-#ifdef MULTIPLE_COMPRESSORS
-	zram->compressor = zram_compressors[0];
-#endif
 
 	/*
 	 * To ensure that we always get PAGE_SIZE aligned
