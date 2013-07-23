@@ -4,7 +4,7 @@ CROSS_COMPILE=/Working_Directory/android_prebuilt/linux-x86/toolchain/arm-eabi-4
 
 if [ ! -f $KERNELDIR/.config ];
 then
-  make defconfig psn_i9305_oc_v2.3.1_defconfig
+  make defconfig psn_i9305_oc_v2.3.2_defconfig
 fi
 
 . $KERNELDIR/.config
